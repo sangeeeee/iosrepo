@@ -45,7 +45,7 @@ Object currentPlane() { return field<Object>(manager,managerPlane); }
 float songClock() { return field<float>(field<Object>(currentPlane(),planeParams),0x10); }
 practice::LoopRange region;
 practice::RateObservation externalRate;
-bool toolPaused,heldPreview,ratePending;
+bool toolPaused,heldPreview,ratePending,recoverOnResume;
 uint32_t practiceResultHandle;
 Object practiceResult; // still rooted by game if GC handle allocation fails
 
@@ -61,6 +61,7 @@ void forgetPractice() {
     practiceResult=nullptr;
 }
 void markPractice() {
+    if (!trainerEnabled) return;
     Object result=field<Object>(manager,managerResult);
     if (!result || result==practiceResult) return;
     forgetPractice();
@@ -162,7 +163,7 @@ void resetTransport() {
     releaseCharming();
     pianoEffects.clear();
     discardPreview();
-    region={}; externalRate={}; toolPaused=heldPreview=ratePending=false;
+    region={}; externalRate={}; toolPaused=heldPreview=ratePending=recoverOnResume=false;
     ++transportID;++audioEpoch;
     abandonGesture();
     chartReady=false;historyOK=true;blockPast=false;
@@ -357,7 +358,7 @@ void releaseHeldPreview() {
     rebuildPlane(time);
 }
 void toggleHold() {
-    if (!manager || paused || !chartReady || dragging || beginRequested) return;
+    if (!trainerEnabled || !manager || paused || !chartReady || dragging || beginRequested) return;
     markPractice();
     if (toolPaused) {
         toolPaused=false;
@@ -372,7 +373,7 @@ void toggleHold() {
     }
 }
 void markRegion() {
-    if (!manager || !chartReady || paused || (!historyOK && !region.complete()) || dragging || beginRequested) return;
+    if (!trainerEnabled || !manager || !chartReady || paused || (!historyOK && !region.complete()) || dragging || beginRequested) return;
     markPractice();
     region.mark(std::clamp(songClock(),0.f,durationSec));
 }
@@ -386,6 +387,9 @@ void loopToStart(float now) {
 }
 void applyLiveRate();
 void updateTransport(Object owner,Method method) {
+    // While disabled, keep only the chart history needed to attach mid-song.
+    // Native playback, input and scoring run without transport commands.
+    if (!trainerEnabled) {originalUpdate(owner,method);return;}
     if (owner==manager && ratePending && !paused && !dragging && !beginRequested) applyLiveRate();
     if (!manager || owner!=manager || !chartReady) {
         originalUpdate(owner,method);return;

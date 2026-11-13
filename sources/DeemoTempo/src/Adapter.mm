@@ -1,4 +1,5 @@
 #import <UIKit/UIKit.h>
+#import "Settings.h"
 #include "Tempo.hpp"
 #include "Transport.hpp"
 #include <unordered_map>
@@ -24,6 +25,7 @@ using EffectHook = void (*)(void *,void *,void **);
 
 uintptr_t base;
 bool ready;
+bool trainerEnabled=true;
 NSString *statusText;
 std::atomic<float> selection{1.0f};
 std::atomic<int> offsetMs{0};
@@ -65,12 +67,12 @@ void endSong();
 #include "TransportAdapter.inc"
 void setPitch(float value) { originalSetPitch(source,value,nullptr); }
 void observePitch(Object object,float value,Method method) {
-    if (ready && manager && object==source && std::isfinite(value) && value!=tempo.rate)
+    if (ready && trainerEnabled && manager && object==source && std::isfinite(value) && value!=tempo.rate)
         markPractice();
     originalSetPitch(object,value,method);
 }
 void observeAudioPause(Object object,Method method) {
-    if (ready && manager && object==source && !paused) markPractice();
+    if (ready && trainerEnabled && manager && object==source && !paused) markPractice();
     originalPauseAudio(object,method);
 }
 void releaseAudio() {
@@ -126,7 +128,7 @@ void prepareAudio(Object target) {
     // measured correction for this output route. Unity keeps its own calibration.
     delaySeconds=pitchSession.latencySeconds(outputHz)+offsetMs.load()*.001f;
     setPitch(tempo.rate);
-    statusText=[NSString stringWithFormat:@"本曲 %.3f× · BGM 保调",tempo.rate];
+    statusText=[NSString stringWithFormat:@"本曲 %.2f× · BGM 保调",tempo.rate];
 }
 void onStop(Object object,Method method) {
     originalStop(object,method);
@@ -143,18 +145,30 @@ void onPlay(Object owner,Method method) {
     if (owner!=manager || target!=source) {
         endSong(); manager=owner;source=target;
         chartReady=loadChart();
-        tempo.rate=selection.load();playing.store(true);
+        tempo.rate=trainerEnabled?selection.load():1.f;playing.store(true);
         Object native=field<Object>(target,Deemo::objectNative);
-        if (tempo.rate!=1.f || (native && field<float>(native,Deemo::sourcePitch)!=1.f)) markPractice();
+        if (trainerEnabled && (tempo.rate!=1.f || (native && field<float>(native,Deemo::sourcePitch)!=1.f))) markPractice();
         keyEpoch=originalTime(nullptr);
-        statusText=[NSString stringWithFormat:@"本曲 %.3f×",tempo.rate];
+        statusText=[NSString stringWithFormat:@"本曲 %.2f×",tempo.rate];
     } else if (paused) {
         keyEpoch+=originalTime(nullptr)-pauseAt;
         paused=false;
+        if (ratePending) {
+            stopKeyVoices();
+            releaseAudio();
+            tempo.rate=trainerEnabled?selection.load():1.f;
+            ratePending=false;
+            recoverOnResume=true;
+        }
+        if (recoverOnResume) keyEpoch=originalTime(nullptr);
     }
     Object previous=startingSource;startingSource=target;
     originalPlay(owner,method);
     startingSource=previous;
+    if (recoverOnResume && !paused && !toolPaused) {
+        recoverOnResume=false;
+        recoverKeys(songClock());
+    }
     if (toolPaused) at<Action>(Deemo::pauseAudio)(source,nullptr);
 }
 void applyLiveRate() {
@@ -171,14 +185,49 @@ void applyLiveRate() {
         replayHere();
         recoverKeys(songClock());
     }
-    if (rate==tempo.rate) statusText=[NSString stringWithFormat:@"练习 · %.3f×",tempo.rate];
+    if (rate==tempo.rate) statusText=[NSString stringWithFormat:@"练习 · %.2f×",tempo.rate];
+}
+void changeEnabled(bool enabled) {
+    if (trainerEnabled==enabled) return;
+    trainerEnabled=enabled;
+    ++transportID; // Invalidate pending popover edits and touches from the old state.
+    if (!manager) return;
+    externalRate={};
+    if (enabled) {
+        ratePending=tempo.rate!=selection.load();
+        if (ratePending) markPractice();
+        return;
+    }
+    region={};
+    ratePending=false;
+    bool restartAudio=tempo.rate!=1 || toolPaused || dragging;
+    if (restartAudio) {
+        stopKeyVoices();
+        releaseAudio();
+        tempo.rate=1.f;
+        keyEpoch=originalTime(nullptr);
+    }
+    if (dragging) {
+        // Restore the last committed position without an intermediate audio restart.
+        toolPaused=true;
+        cancelRequested=true;
+        finishScrub();
+    }
+    abandonGesture();
+    toolPaused=false;
+    releaseHeldPreview();
+    if (restartAudio && paused) recoverOnResume=true;
+    if (restartAudio && !paused) {
+        replayHere();
+        recoverKeys(songClock());
+    }
 }
 bool onFrame(Object enumerator,Method method) {
-    if (ready && manager && !paused && !toolPaused && !previewing &&
+    if (ready && trainerEnabled && manager && !paused && !toolPaused && !previewing &&
         manager==field<Object>(enumerator,Deemo::coroutineOwner) &&
         practiceResult!=field<Object>(manager,managerResult) &&
         externalRate.changed(originalDelta(nullptr),at<Clock>(Deemo::unscaledDelta)(nullptr))) markPractice();
-    bool prior=inFrame;inFrame=ready;
+    bool prior=inFrame;inFrame=ready && trainerEnabled;
     bool more=originalFrame(enumerator,method);
     inFrame=prior;
     if (ready && !more && manager && manager==field<Object>(enumerator,Deemo::coroutineOwner)) {
@@ -193,7 +242,7 @@ bool onFrame(Object enumerator,Method method) {
 }
 void seek(Object obj,int frame,Method method) {
     // In 5.0.8 the native song seeks only in PlayMusic and after exiting for retry.
-    if (ready && manager && obj==source && obj!=startingSource) markPractice();
+    if (ready && trainerEnabled && manager && obj==source && obj!=startingSource) markPractice();
     if ((sourceHandle || transportSeek) && obj==startingSource) {
         Object clip=at<Object(*)(Object,Method)>(Deemo::getClip)(obj,nullptr);
         int length=clip?at<Integer>(Deemo::clipSamples)(clip,nullptr):0;
@@ -241,6 +290,7 @@ void keyPlay(Object bank,int pitch,int velocity,float duration,Method method) {
 }
 void onPause(Object owner,Method method) {
     if (ready && owner==manager && !paused) {
+        if (toolPaused) recoverOnResume=true;
         toolPaused=false;
         releaseHeldPreview();
         externalRate={};
@@ -339,9 +389,9 @@ bool installAll(const mach_header_64 *header,const char *path) {
 @implementation DTRatePanel
 - (void)commitRate {
     [NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(commitRate) object:nil];
-    if (!self.changed || self.openedSession!=transportID) return;
+    if (!self.changed || !trainerEnabled || self.openedSession!=transportID) return;
     self.changed=NO;
-    float value=self.slider.value;
+    float value=steppedTempo(self.slider.value);
     if (value==selection.load()) return;
     if (manager) {
         markPractice();
@@ -349,12 +399,13 @@ bool installAll(const mach_header_64 *header,const char *path) {
         self.statusLabel.text=@"本局练习 · 结算 0%";
     }
     selection.store(value);
-    [NSUserDefaults.standardUserDefaults setDouble:(double)value*100 forKey:@"DTPracticeRate"];
+    DTSet(DTRate,@(tempoTick(value)));
 }
 - (void)applyRate:(UISlider *)slider {
+    slider.value=steppedTempo(slider.value);
     self.changed=YES;
-    self.readout.text=[NSString stringWithFormat:@"练习倍率   %.3f×",slider.value];
-    slider.accessibilityValue=[NSString stringWithFormat:@"%.3f×",slider.value];
+    self.readout.text=[NSString stringWithFormat:@"练习倍率   %.2f×",slider.value];
+    slider.accessibilityValue=[NSString stringWithFormat:@"%.2f×",slider.value];
     [NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(commitRate) object:nil];
     [self performSelector:@selector(commitRate) withObject:nil afterDelay:.22 inModes:@[NSRunLoopCommonModes]];
 }
@@ -402,7 +453,7 @@ bool installAll(const mach_header_64 *header,const char *path) {
     ]];
     self.readout=[UILabel new];
     self.readout.font=[UIFont monospacedDigitSystemFontOfSize:19 weight:UIFontWeightSemibold];
-    self.readout.text=[NSString stringWithFormat:@"练习倍率   %.3f×",selection.load()];
+    self.readout.text=[NSString stringWithFormat:@"练习倍率   %.2f×",selection.load()];
     [stack addArrangedSubview:self.readout];
     UILabel *status=[UILabel new];
     status.font=[UIFont systemFontOfSize:13];
@@ -417,7 +468,7 @@ bool installAll(const mach_header_64 *header,const char *path) {
         self.slider.value=selection.load();
         self.slider.continuous=YES;
         self.slider.accessibilityLabel=@"练习倍率";
-        self.slider.accessibilityValue=[NSString stringWithFormat:@"%.3f×",self.slider.value];
+        self.slider.accessibilityValue=[NSString stringWithFormat:@"%.2f×",self.slider.value];
         [self.slider addTarget:self action:@selector(applyRate:) forControlEvents:UIControlEventValueChanged];
         [self.slider addTarget:self action:@selector(commitRate) forControlEvents:UIControlEventTouchUpInside|UIControlEventTouchUpOutside];
         [stack addArrangedSubview:self.slider];
@@ -491,6 +542,7 @@ bool installAll(const mach_header_64 *header,const char *path) {
     [self.track setNeedsDisplay];
 }
 - (void)refreshTrack:(CADisplayLink *)sender {
+    if (!trainerEnabled) return;
     UIWindow *window=self.track.window;
     if (!window) return;
     BOOL inSong=playing.load();
@@ -505,7 +557,7 @@ bool installAll(const mach_header_64 *header,const char *path) {
     CGFloat available=window.bounds.size.width-insets.left-insets.right;
     CGFloat y=insets.top+2;
     self.button.hidden=NO;
-    [self.button setTitle:ready?[NSString stringWithFormat:@"♫ %.3f×",selection.load()]:@"♫ 状态" forState:UIControlStateNormal];
+    [self.button setTitle:ready?[NSString stringWithFormat:@"♫ %.2f×",selection.load()]:@"♫ 状态" forState:UIControlStateNormal];
     if (!visible) {
         self.bar.frame=CGRectMake(insets.left+8,y,148,52);
         self.button.frame=CGRectMake(4,4,86,44);
@@ -545,6 +597,31 @@ bool installAll(const mach_header_64 *header,const char *path) {
 - (void)resign:(NSNotification *)note {
     if (dragging||beginRequested) cancelRequested=true;
 }
+- (void)reloadSettings {
+    DTConfig c=DTReadConfig();
+    float previous=selection.exchange(c.rate);
+    BOOL rateChanged=previous!=c.rate;
+    BOOL themeChanged=paletteIndex!=c.theme;
+    BOOL sensitivityChanged=scrubSensitivity!=c.sensitivity;
+    paletteIndex=c.theme;
+    scrubSensitivity=c.sensitivity;
+    changeEnabled(c.enabled);
+    if (c.enabled && manager && rateChanged) {
+        ratePending=true;
+        markPractice();
+    }
+    if (themeChanged) [self applyTheme];
+    UIViewController *panel=self.controlsWindow.rootViewController.presentedViewController;
+    if (!c.enabled || (rateChanged && [panel isKindOfClass:DTRatePanel.class]) ||
+        ((themeChanged || sensitivityChanged) && [panel isKindOfClass:DTSettingsPanel.class])) {
+        if ([panel isKindOfClass:DTRatePanel.class]) ((DTRatePanel *)panel).changed=NO;
+        [panel dismissViewControllerAnimated:NO completion:nil];
+    }
+    self.controlsWindow.hidden=!c.enabled;
+    self.display.paused=!c.enabled || !playing.load();
+    [self check:nil];
+}
+- (void)becameActive:(NSNotification *)note { [self reloadSettings]; }
 - (void)check:(NSTimer *)timer {
     UIApplication *app=UIApplication.sharedApplication;
     if (app.applicationState!=UIApplicationStateActive) return;
@@ -557,6 +634,7 @@ bool installAll(const mach_header_64 *header,const char *path) {
             break;
         }
     }
+    if (!trainerEnabled) return;
     UIWindow *window=nil;
     for (UIScene *scene in app.connectedScenes) {
         if (![scene isKindOfClass:UIWindowScene.class] || scene.activationState!=UISceneActivationStateForegroundActive) continue;
@@ -599,7 +677,7 @@ bool installAll(const mach_header_64 *header,const char *path) {
 }
 - (void)presentPanel:(UIViewController *)panel from:(UIButton *)button size:(CGSize)size {
     UIViewController *vc=self.controlsWindow.rootViewController;
-    if (!vc || vc.presentedViewController || dragging || beginRequested) return;
+    if (!trainerEnabled || !vc || vc.presentedViewController || dragging || beginRequested) return;
     panel.modalPresentationStyle=UIModalPresentationPopover;
     panel.preferredContentSize=size;
     panel.popoverPresentationController.sourceView=button;
@@ -618,15 +696,15 @@ bool installAll(const mach_header_64 *header,const char *path) {
     [self presentPanel:panel from:self.settingsButton size:CGSizeMake(315,216)];
 }
 - (void)start {
-    // Older versions also stored percentages, restricted to eight integer values.
-    double saved=[NSUserDefaults.standardUserDefaults doubleForKey:@"DTPracticeRate"]/100.0;
-    if (saved>=.1 && saved<=2) selection.store((float)saved);
+    // Upgrade each explicitly saved 0.4.x key only if the companion has not set it.
+    NSUserDefaults *legacy=NSUserDefaults.standardUserDefaults;
+    NSNumber *rate=[legacy objectForKey:@"DTPracticeRate"];
+    if (rate && ![DTStore() objectForKey:DTRate]) DTSet(DTRate,@(tempoTick(rate.doubleValue/100)));
+    NSNumber *theme=[legacy objectForKey:@"DTToolbarTheme"], *gain=[legacy objectForKey:@"DTScrubSensitivity"];
+    if (theme && ![DTStore() objectForKey:DTTheme]) DTSet(DTTheme,theme);
+    if (gain && ![DTStore() objectForKey:DTSensitivity]) DTSet(DTSensitivity,gain);
     int ms=(int)[NSUserDefaults.standardUserDefaults integerForKey:@"DTPracticeOffset"];
     if (ms>=-200 && ms<=200) offsetMs.store(ms);
-    NSInteger theme=[NSUserDefaults.standardUserDefaults integerForKey:@"DTToolbarTheme"];
-    if (theme>=0 && theme<(NSInteger)(sizeof(palettes)/sizeof(*palettes))) paletteIndex=theme;
-    float sensitivity=[NSUserDefaults.standardUserDefaults floatForKey:@"DTScrubSensitivity"];
-    if (sensitivity>=practice::minSensitivity && sensitivity<=practice::maxSensitivity) scrubSensitivity=sensitivity;
     self.bar=[UIView new];
     self.bar.layer.cornerRadius=14;
     self.bar.layer.borderWidth=1;
@@ -650,8 +728,10 @@ bool installAll(const mach_header_64 *header,const char *path) {
     self.display.paused=YES;
     [self.display addToRunLoop:NSRunLoop.mainRunLoop forMode:NSRunLoopCommonModes];
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(resign:) name:UIApplicationWillResignActiveNotification object:nil];
+    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(becameActive:) name:UIApplicationDidBecomeActiveNotification object:nil];
+    DTObserve(^{[self reloadSettings];});
     self.timer=[NSTimer timerWithTimeInterval:.5 target:self selector:@selector(check:) userInfo:nil repeats:YES];
-    [NSRunLoop.mainRunLoop addTimer:self.timer forMode:NSRunLoopCommonModes];[self check:nil];
+    [NSRunLoop.mainRunLoop addTimer:self.timer forMode:NSRunLoopCommonModes];[self reloadSettings];
 }
 @end
 

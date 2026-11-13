@@ -22,12 +22,12 @@ static UIColor *DTColor(unsigned rgb) {
 }
 - (void)themeChanged:(UISegmentedControl *)sender {
     paletteIndex=sender.selectedSegmentIndex;
-    [NSUserDefaults.standardUserDefaults setInteger:paletteIndex forKey:@"DTToolbarTheme"];
+    DTSet(DTTheme,@(paletteIndex));
     if (self.onChange) self.onChange();
 }
 - (void)sensitivityChanged:(UISlider *)sender {
     scrubSensitivity=roundf(sender.value)/100;
-    [NSUserDefaults.standardUserDefaults setFloat:scrubSensitivity forKey:@"DTScrubSensitivity"];
+    DTSet(DTSensitivity,@(scrubSensitivity));
     sender.accessibilityValue=[NSString stringWithFormat:@"%.0f%%",scrubSensitivity*100];
     [self updateLabel];
 }
@@ -49,7 +49,7 @@ static UIColor *DTColor(unsigned rgb) {
     UILabel *heading=[UILabel new];
     heading.text=@"工具栏配色";
     [stack addArrangedSubview:heading];
-    UISegmentedControl *themes=[[UISegmentedControl alloc] initWithItems:@[@"白色",@"深色",@"浅蓝"]];
+    UISegmentedControl *themes=[[UISegmentedControl alloc] initWithItems:DTThemeNames()];
     themes.selectedSegmentIndex=paletteIndex;
     themes.accessibilityLabel=heading.text;
     [themes addTarget:self action:@selector(themeChanged:) forControlEvents:UIControlEventValueChanged];

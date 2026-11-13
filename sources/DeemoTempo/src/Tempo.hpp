@@ -1,5 +1,12 @@
 #pragma once
 #include <cmath>
+#include <algorithm>
+
+inline int tempoTick(double rate) {
+    if (!std::isfinite(rate)) return 20;
+    return static_cast<int>(std::lround(std::clamp(rate,0.1,2.0)*20));
+}
+inline float steppedTempo(double rate) { return tempoTick(rate)/20.f; }
 
 // A source consumes original samples at 'rate'. Its local effect cancels that
 // pitch change. Chart time stays in ORIGINAL song seconds, including after seeks.

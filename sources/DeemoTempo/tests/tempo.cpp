@@ -11,6 +11,15 @@ static int attach(void*,void*,void**){if(++call==failAt)return 9;++attached;retu
 static int release(void*){++freed;return 0;}
 static int removeFx(void*){++removed;return 0;}
 int main() {
+    for (int tick=2;tick<=40;++tick) {
+        assert(tempoTick(tick/20.)==tick);
+        assert(tempoTick(steppedTempo(tick/20.))==tick);
+        assert(tempoTick(tick/20.+.024)==tick);
+        assert(tempoTick(tick/20.-.024)==tick);
+    }
+    assert(tempoTick(.025)==2 && tempoTick(20.)==40);
+    assert(tempoTick(std::numeric_limits<double>::quiet_NaN())==20);
+    assert(steppedTempo(.993)==1.f && steppedTempo(.824)==.8f && steppedTempo(.826)==.85f);
     PitchBackend api{create,param,attach,removeFx,release};
     for (int thousandths=100;thousandths<=2000;++thousandths) {
         float rate=thousandths/1000.f;
@@ -34,5 +43,5 @@ int main() {
         assert(fx.start(api,(void*)1,(void*)2,11,{.1f})!=0);
         fx.stop(api);assert(freed==created && removed==attached);
     }
-    puts("PASS: 1901 rates from 0.100 through 2.000, 5-minute clock conversion, effect setup rollback, idempotent release");
+    puts("PASS: 39 selectable rates and legacy rounding, 1901 audio timing checks, effect rollback and release");
 }

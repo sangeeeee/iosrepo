@@ -81,7 +81,7 @@
 }
 - (void)touchesBegan:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event {
     UITouch *touch=touches.anyObject;
-    if (!chartReady || !historyOK || paused || !playing.load() ||
+    if (!trainerEnabled || !chartReady || !historyOK || paused || !playing.load() ||
         [touch locationInView:self].x>[self travel]+20) return;
     self.session=transportID;
     [self aim:touch];beginRequested=true;finishRequested=false;cancelRequested=false;

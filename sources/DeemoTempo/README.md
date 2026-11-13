@@ -1,8 +1,16 @@
-# DEEMO Practice Tempo 0.4.1~beta1
+# DEEMO Trainer 0.9 beta
 
-适用 DEEMO 5.0.8（1001405，com.rayark.pluto），iPadOS 16 Dopamine Rootless。软件包只包含游戏内插件与加载过滤器。适配的 UnityFramework UUID 为 37b8f14d-ccfd-3358-8c31-cbe88ff67b2a。
+适用于 DEEMO 5.0.8（1001405，com.rayark.pluto），适配的 UnityFramework UUID 为 37b8f14d-ccfd-3358-8c31-cbe88ff67b2a。升级沿用原软件包 com.linghe.deemotempo，Sileo 版本为 0.9~beta1。
 
-在 Sileo 安装后，从多任务界面完全退出 DEEMO，再重新打开。选曲时点左上角的音符倍率按钮，可在 0.10× 到 2.00× 之间连续调节。默认 1×，倍率保存在设备上。进入歌曲后，倍率按钮移到进度条左侧，曲终离开游玩界面后回到左上角。倍率面板显示三位小数，拖动时停顿约 0.22 秒或松手即应用。点“恢复 1×”可精确回到原速。
+在 Sileo 安装后，桌面会出现带银色扳手的 **DEEMO Trainer**。首次安装或升级后，从多任务界面完全退出 DEEMO 并重新打开一次，载入新版。两处设置通过 Cephei Tweak Support 2.0 同步，Sileo 会一并处理此依赖。
+
+桌面应用顶部的“启用练习器”默认开启。关闭时游戏内工具栏和面板消失，取消循环，退出插件暂停，恢复原速。正在拖动时回到拖动前的位置。游戏自己的暂停菜单仍由游戏控制。重新开启会应用当前保存的倍率；DEEMO 在后台挂起时，回到游戏后读取开关。为支持曲中随时重新开启和回放，已载入的适配器在关闭期间仍记录本局原生判定。已经使用过练习功能的当局继续按 0% 结算，之后全程关闭的新局正常计分。
+
+在桌面或游戏内可调整配色、拖动灵敏度及歌曲倍率。速度范围 0.10× 到 2.00×，每档 0.05×，共 39 档，显示两位小数。升级后会在首次启动游戏时将旧倍率取至最近一档；桌面已设置的值优先。选曲时点左上角倍率按钮，开曲后按钮移到进度条左侧。游戏内拖动倍率滑条时停顿约 0.22 秒或松手即应用，“恢复 1×”可回到原速。
+
+## iPad 兼容性
+
+桌面应用和游戏插件均按 arm64、最低 iPadOS 15.0 构建，以 Rootless 布局打包。插件按游戏构建号和 UnityFramework UUID 校验，没有 iPad mini 6 机型限制。普通 iPad、iPad Air、iPad mini 和 iPad Pro 只要能运行该游戏构建，且设备的芯片、系统和越狱支持 Rootless 插件加载，均可试用。同一市场版本若包含不同的游戏二进制，也需单独适配。其他机型及 iPadOS 15 的兼容性为构建和代码层面判断，尚无本版真机验收。越狱支持的具体系统与芯片组合请查阅 [Dopamine 官方说明](https://ellekit.space/dopamine/)。
 
 歌曲顶部从左到右依次是倍率、进度条、暂停、区间和设置。工具栏高 56 pt，按钮及留白由独立窗口接住触摸。进度条上实心大点为播放头，淡色小点为手指目标。默认灵敏度下，播放头追赶速度约为 0.3.1 版的 40%，最高每秒 36 秒原曲时间。拖到曲首、曲尾或已选区间边界时，最后一步停在边界。按住期间音频暂停，谱面跟随白点滚动，松手从播放头位置继续。点击暂停键，播放和判定冻结，仍可拖动、设区间和调速。再点一次继续。
 
@@ -26,7 +34,7 @@ src/Tempo.hpp 包含倍率换算和可替换的音频后端接口。src/Deemo508
 
 ## 验证与构建
 
-在 Linux/WSL 设置 DEEMO_TOOLROOT 指向本地 ShadeBar 交叉编译工具目录，运行 bash build.sh。构建会运行时钟/回退测试，并生成已签名的 arm64 动态库。在本软件源目录布局下运行 python package.py，再运行仓库的 tools/update_repo.py 及其 --check。安装包为 com.linghe.deemotempo，包架构为 iphoneos-arm64。
+在 Linux/WSL 设置 DEEMO_TOOLROOT 指向本地 ShadeBar 交叉编译工具目录，运行 bash build.sh。构建会运行时钟/回退测试，并生成已签名的 arm64 桌面应用及游戏动态库。在本软件源目录布局下运行 python package.py，再运行仓库的 tools/update_repo.py 及其 --check。安装包为 com.linghe.deemotempo，包架构为 iphoneos-arm64。
 
 可在持有原 IPA 的机器运行 python tests/verify_ipa.py <IPA> 校验应用版本、UUID、62 个入口与 37 处关键调用，并核对结算对象从游玩场景传至结算页的读写位置。python tests/chart_check.py <IPA> [UnityPy依赖目录] 读取原谱面。python tests/render_tone.py [fmod_toolkit依赖目录] 用桌面 FMOD 渲染测试音。桌面 FMOD 和此游戏内的 FMOD 版本不同。
 
