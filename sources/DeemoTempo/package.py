@@ -6,7 +6,7 @@ sys.dont_write_bytecode=True
 sys.path.insert(0,str(repo/'sources/PianoLab'))
 from packaging_helpers import signature_check,archive
 package='com.linghe.deemotempo'
-version='0.9~beta2'
+version='0.9~beta3'
 binary=(root/'build/DeemoTempo.dylib').read_bytes()
 check=signature_check(binary,expected_subtype=0,expected_kind=6)
 assert check['code_pages_verified']>0
@@ -18,7 +18,7 @@ signature_check(executable,expected_subtype=0,expected_kind=2)
 orient=['UIInterfaceOrientationPortrait','UIInterfaceOrientationLandscapeLeft','UIInterfaceOrientationLandscapeRight']
 info={'CFBundleExecutable':'DeemoTrainer','CFBundleIdentifier':'com.linghe.deemotrainer',
       'CFBundleName':'DEEMO Trainer','CFBundleDisplayName':'DEEMO Trainer','CFBundlePackageType':'APPL',
-      'CFBundleVersion':'91','CFBundleShortVersionString':'0.9','MinimumOSVersion':'15.0',
+      'CFBundleVersion':'92','CFBundleShortVersionString':'0.9','MinimumOSVersion':'15.0',
       'UIDeviceFamily':[1,2],'LSRequiresIPhoneOS':True,'UILaunchScreen':{},
       'UISupportedInterfaceOrientations':orient,'UISupportedInterfaceOrientations~ipad':orient+['UIInterfaceOrientationPortraitUpsideDown'],
       'CFBundleIcons':{'CFBundlePrimaryIcon':{'CFBundleIconFiles':['Icon-60']}},

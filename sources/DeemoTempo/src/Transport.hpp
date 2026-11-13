@@ -6,6 +6,28 @@
 #include <vector>
 
 namespace practice {
+// On wide iPads the rail grows more slowly, leaving room for the game UI.
+inline double toolbarWidth(double available) {
+    return std::min(.94*available,702.+.10*available);
+}
+
+struct RailTouch {
+    enum Phase { idle, tap, scrub, ignored };
+    Phase phase=idle;
+    double startX=0, startY=0;
+    bool nearHead=false;
+    void begin(double x,double y,double head) {
+        startX=x; startY=y;
+        nearHead=std::abs(x-head)<=24;
+        phase=tap;
+    }
+    void move(double x,double y) {
+        if (phase!=tap) return;
+        double dx=std::abs(x-startX),dy=std::abs(y-startY);
+        if (std::max(dx,dy)<8) return;
+        phase=nearHead && dx>=dy?scrub:ignored;
+    }
+};
 struct Note {
     uintptr_t id;
     float time;

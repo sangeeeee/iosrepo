@@ -30,7 +30,7 @@ std::vector<practice::Note> chartNotes;
 std::unordered_map<uintptr_t,size_t> noteIndices;
 std::unordered_set<uintptr_t> rebuildSkip;
 bool chartReady,historyOK,dragging,beginRequested,finishRequested,cancelRequested;
-bool previewing,blockPast;
+bool previewing,blockPast,jumpRequested;
 float originSec,lowestSec,positionSec,aimSec,durationSec,progressSec;
 double previousTick;
 Object judgingInfo;
@@ -158,6 +158,7 @@ void renderPreview(float time) {
     }
 }
 void abandonGesture() {
+    jumpRequested=false;
     dragging=beginRequested=finishRequested=cancelRequested=previewing=false;
 }
 void resetTransport() {
@@ -404,8 +405,15 @@ void updateTransport(Object owner,Method method) {
             clearHitEffects();
             at<Action>(Deemo::pauseAudio)(source,nullptr);
             stopKeyVoices();
-            if (!heldPreview) at<Action>(Deemo::clearPlane)(currentPlane(),nullptr);
+            if (!heldPreview && (!jumpRequested || toolPaused || cancelRequested))
+                at<Action>(Deemo::clearPlane)(currentPlane(),nullptr);
             heldPreview=false;
+            if (jumpRequested && !cancelRequested) {
+                positionSec=region.constrain(std::clamp(aimSec,0.f,durationSec));
+                lowestSec=std::min(originSec,positionSec);
+                finishScrub();
+                return;
+            }
             renderPreview(positionSec);
             previousTick=CACurrentMediaTime();
         } else {

@@ -1,4 +1,6 @@
-@interface DTSongTrack : UIView
+@interface DTSongTrack : UIView {
+    practice::RailTouch _gesture;
+}
 @property(nonatomic,strong) UILabel *timeLabel;
 @property(nonatomic) unsigned session;
 @end
@@ -16,6 +18,7 @@
         [self addSubview:self.timeLabel];
         self.isAccessibilityElement=YES;
         self.accessibilityLabel=@"歌曲进度";
+        self.accessibilityHint=@"轻点跳转，拖动播放头可缓慢定位";
     }
     return self;
 }
@@ -80,19 +83,49 @@
     aimSec=region.constrain(aimSec);
 }
 - (void)touchesBegan:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event {
-    UITouch *touch=touches.anyObject;
-    if (!trainerEnabled || !chartReady || !historyOK || paused || !playing.load() ||
-        [touch locationInView:self].x>[self travel]+20) return;
+    _gesture.phase=practice::RailTouch::idle;
+    CGPoint point=[touches.anyObject locationInView:self];
+    CGFloat travel=[self travel];
+    if (!trainerEnabled || !playing.load() || !chartReady || !historyOK || paused ||
+        beginRequested || dragging || !(durationSec>0) || point.x>travel+20) return;
     self.session=transportID;
-    [self aim:touch];beginRequested=true;finishRequested=false;cancelRequested=false;
+    CGFloat head=10+travel*std::clamp(progressSec/durationSec,0.f,1.f);
+    _gesture.begin(point.x,point.y,head);
+}
+- (void)trackMotion:(UITouch *)touch {
+    if (_gesture.phase==practice::RailTouch::idle || self.session!=transportID) return;
+    CGPoint point=[touch locationInView:self];
+    auto previous=_gesture.phase;
+    _gesture.move(point.x,point.y);
+    if (_gesture.phase!=practice::RailTouch::scrub) return;
+    [self aim:touch];
+    if (previous==practice::RailTouch::tap) {
+        beginRequested=true;
+        finishRequested=cancelRequested=jumpRequested=false;
+    }
 }
 - (void)touchesMoved:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event {
-    if ((dragging||beginRequested) && self.session==transportID) [self aim:touches.anyObject];
+    [self trackMotion:touches.anyObject];
 }
 - (void)touchesEnded:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event {
-    if ((dragging||beginRequested) && self.session==transportID) finishRequested=true;
+    UITouch *touch=touches.anyObject;
+    [self trackMotion:touch];
+    if (self.session==transportID && trainerEnabled && !paused && historyOK) {
+        if (_gesture.phase==practice::RailTouch::tap) {
+            [self aim:touch];
+            beginRequested=jumpRequested=true;
+            finishRequested=cancelRequested=false;
+        } else if (_gesture.phase==practice::RailTouch::scrub) {
+            finishRequested=true;
+        }
+    } else if (self.session==transportID && (dragging || beginRequested)) {
+        cancelRequested=true;
+    }
+    _gesture.phase=practice::RailTouch::idle;
 }
 - (void)touchesCancelled:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event {
-    if ((dragging||beginRequested) && self.session==transportID) cancelRequested=true;
+    if (_gesture.phase==practice::RailTouch::scrub && self.session==transportID)
+        cancelRequested=true;
+    _gesture.phase=practice::RailTouch::idle;
 }
 @end

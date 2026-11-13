@@ -549,13 +549,13 @@ bool installAll(const mach_header_64 *header,const char *path) {
     }
     CGFloat gap=available>=550?10:4;
     CGFloat rateWidth=available>=550?80:69, actionWidth=44;
-    CGFloat total=MIN(860,available-8);
+    CGFloat total=practice::toolbarWidth(available);
     CGFloat x=5;
     CGFloat rail=total-2*x-rateWidth-3*actionWidth-4*gap;
-    self.bar.frame=CGRectMake(insets.left+(available-total)/2,y,total,56);
+    self.bar.frame=CGRectMake(insets.left+8,y,total,56);
     self.button.frame=CGRectMake(x,4,rateWidth,48);
     x+=rateWidth+gap;
-    self.track.frame=CGRectMake(x,4,rail,48);
+    self.track.frame=CGRectMake(x,0,rail,56);
     x+=rail+gap;
     self.holdButton.frame=CGRectMake(x,4,actionWidth,48);
     x+=actionWidth+gap;

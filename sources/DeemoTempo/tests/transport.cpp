@@ -3,6 +3,25 @@
 #include <cstdio>
 using namespace practice;
 int main(){
+    RailTouch finger;
+    for(double y : {0.,28.,55.}) for(double x : {10.,85.,100.,180.}) {
+        finger.begin(x,y,100);
+        finger.move(x+2,y-2);
+        assert(finger.phase==RailTouch::tap);
+    }
+    finger.begin(76,3,100);finger.move(68,4);assert(finger.phase==RailTouch::scrub);
+    finger.move(12,63);assert(finger.phase==RailTouch::scrub);
+    finger.begin(125,53,100);finger.move(100,53);assert(finger.phase==RailTouch::ignored);
+    finger.move(125,53);assert(finger.phase==RailTouch::ignored);
+    finger.begin(100,28,100);finger.move(102,40);assert(finger.phase==RailTouch::ignored);
+    double last=0;
+    for(double w : {320.,375.,667.,768.,1024.,1133.,1194.,1366.}) {
+        double bar=toolbarWidth(w);
+        assert(bar>last && bar+8<w && bar<std::min(860.,w-8));
+        last=bar;
+    }
+    assert(std::abs(860-toolbarWidth(1133)-44)<2);
+    puts("PASS: tap hit area, near-thumb drag, off-thumb and vertical swipe rejection, responsive toolbar widths");
     // An early hit, a late miss and a chord. Decision time, not nominal
     // beat time, determines what survives a rewind.
     std::vector<Note> chart={{1,1,true},{2,2,true},{3,2,true},{4,2.4f,false},{5,3,true},{6,4,true}};
