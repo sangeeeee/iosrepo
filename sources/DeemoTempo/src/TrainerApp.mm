@@ -3,8 +3,8 @@
 @interface DTTrainerSettings : UITableViewController
 @property(nonatomic,strong) UISwitch *enabledSwitch;
 @property(nonatomic,strong) UISegmentedControl *themes;
-@property(nonatomic,strong) UISlider *speed,*gain;
-@property(nonatomic,strong) UILabel *speedLabel,*gainLabel;
+@property(nonatomic,strong) UISlider *speed,*gain,*delay;
+@property(nonatomic,strong) UILabel *speedLabel,*gainLabel,*delayLabel;
 @end
 
 @implementation DTTrainerSettings
@@ -29,22 +29,36 @@
     [self.themes addTarget:self action:@selector(theme:) forControlEvents:UIControlEventValueChanged];
     self.speed=[self sliderFrom:2 to:40 action:@selector(speedChanged:) label:@"乐曲速度"];
     self.gain=[self sliderFrom:25 to:250 action:@selector(gainChanged:) label:@"拖动灵敏度"];
+    self.delay=[self sliderFrom:-200 to:200 action:@selector(delayChanged:) label:@"声音延迟微调"];
     self.speedLabel=[UILabel new];
     self.gainLabel=[UILabel new];
+    self.delayLabel=[UILabel new];
     [self refresh];
     __weak DTTrainerSettings *weakSelf=self;
-    DTObserve(^{[weakSelf refresh];});
+    DTObserve(^{[weakSelf refresh];},^{
+        [weakSelf refresh];
+        if (!weakSelf.view.window || weakSelf.presentedViewController) return;
+        UIAlertController *alert=[UIAlertController alertControllerWithTitle:@"设置保存失败" message:@"请检查设备存储空间后重试。" preferredStyle:UIAlertControllerStyleAlert];
+        [alert addAction:[UIAlertAction actionWithTitle:@"好" style:UIAlertActionStyleDefault handler:nil]];
+        [weakSelf presentViewController:alert animated:YES completion:nil];
+    });
+    [NSTimer scheduledTimerWithTimeInterval:.5 repeats:YES block:^(NSTimer *timer){
+        if (!weakSelf) { [timer invalidate]; return; }
+        if (UIApplication.sharedApplication.applicationState==UIApplicationStateActive) [weakSelf refresh];
+    }];
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(active:) name:UIApplicationDidBecomeActiveNotification object:nil];
 }
 - (void)active:(NSNotification *)note { [self refresh]; }
 - (void)refresh {
-    DTConfig c=DTReadConfig();
+    DTConfig c;
+    BOOL available=DTReadConfig(c);
+    self.enabledSwitch.enabled=self.speed.enabled=self.gain.enabled=self.delay.enabled=self.themes.enabled=available;
+    if (!available) return;
     self.enabledSwitch.on=c.enabled;
-    self.enabledSwitch.enabled=DTStore()!=nil;
     self.themes.selectedSegmentIndex=c.theme;
     if (!self.speed.tracking) self.speed.value=tempoTick(c.rate);
     if (!self.gain.tracking) self.gain.value=roundf(c.sensitivity*100);
-    self.speed.enabled=self.gain.enabled=self.themes.enabled=DTStore()!=nil;
+    if (!self.delay.tracking) self.delay.value=c.delay;
     [self updateLabels];
 }
 - (void)updateLabels {
@@ -52,27 +66,35 @@
     self.gain.accessibilityValue=[NSString stringWithFormat:@"%.0f%%",self.gain.value];
     self.speedLabel.text=[NSString stringWithFormat:@"乐曲速度    %@",self.speed.accessibilityValue];
     self.gainLabel.text=[NSString stringWithFormat:@"拖动灵敏度    %@",self.gain.accessibilityValue];
+    self.delay.accessibilityValue=[NSString stringWithFormat:@"%.0f ms",self.delay.value];
+    self.delayLabel.text=[NSString stringWithFormat:@"声音延迟微调    %@",self.delay.accessibilityValue];
 }
-- (void)toggle:(UISwitch *)sender { DTSet(DTEnabled,@(sender.on)); }
-- (void)theme:(UISegmentedControl *)sender { DTSet(DTTheme,@(sender.selectedSegmentIndex)); }
+- (void)delayChanged:(UISlider *)sender {
+    sender.value=roundf(sender.value);
+    [self updateLabels];
+    DTSet(settings::Delay,(int)sender.value+200);
+}
+- (void)toggle:(UISwitch *)sender { DTSet(settings::Enabled,sender.on); }
+- (void)theme:(UISegmentedControl *)sender { DTSet(settings::Theme,(int)sender.selectedSegmentIndex); }
 - (void)speedChanged:(UISlider *)sender {
     int tick=(int)lroundf(sender.value);
     sender.value=tick;
     [self updateLabels];
-    if ([[DTStore() objectForKey:DTRate] integerValue]!=tick) DTSet(DTRate,@(tick));
+    DTSet(settings::Rate,tick);
 }
 - (void)gainChanged:(UISlider *)sender {
     sender.value=roundf(sender.value);
     [self updateLabels];
-    DTSet(DTSensitivity,@(sender.value/100));
+    DTSet(settings::Gain,(int)sender.value);
 }
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)table { return 2; }
-- (NSInteger)tableView:(UITableView *)table numberOfRowsInSection:(NSInteger)section { return section==0?1:3; }
+- (NSInteger)tableView:(UITableView *)table numberOfRowsInSection:(NSInteger)section { return section==0?1:4; }
 - (CGFloat)tableView:(UITableView *)table heightForRowAtIndexPath:(NSIndexPath *)path {
     return path.section==0?56:86;
 }
 - (NSString *)tableView:(UITableView *)table titleForFooterInSection:(NSInteger)section {
-    if (!DTStore() && section==0) return @"请在 Sileo 安装 Cephei Tweak Support 后重新打开。";
+    DTConfig current;
+    if (section==0 && !DTReadConfig(current)) return @"正在等待设置服务。";
     return section==0?@"切换后，正在运行的 DEEMO 也会应用此设置。":nil;
 }
 - (UITableViewCell *)tableView:(UITableView *)table cellForRowAtIndexPath:(NSIndexPath *)path {
@@ -82,8 +104,8 @@
         cell.accessoryView=self.enabledSwitch;
         return cell;
     }
-    UILabel *label=path.row==0?self.speedLabel:path.row==2?self.gainLabel:[UILabel new];
-    UIView *control=path.row==0?(UIView *)self.speed:path.row==1?(UIView *)self.themes:self.gain;
+    UILabel *label=path.row==0?self.speedLabel:path.row==2?self.gainLabel:path.row==3?self.delayLabel:[UILabel new];
+    UIView *control=path.row==0?(UIView *)self.speed:path.row==1?(UIView *)self.themes:path.row==2?self.gain:self.delay;
     if (path.row==1) label.text=@"工具栏配色";
     label.font=[UIFont preferredFontForTextStyle:UIFontTextStyleBody];
     UIStackView *stack=[[UIStackView alloc] initWithArrangedSubviews:@[label,control]];

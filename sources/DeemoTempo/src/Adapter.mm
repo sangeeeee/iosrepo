@@ -25,7 +25,7 @@ using EffectHook = void (*)(void *,void *,void **);
 
 uintptr_t base;
 bool ready;
-bool trainerEnabled=true;
+bool trainerEnabled=false; // The first committed settings snapshot supplies the default (on).
 NSString *statusText;
 std::atomic<float> selection{1.0f};
 std::atomic<int> offsetMs{0};
@@ -383,40 +383,23 @@ bool installAll(const mach_header_64 *header,const char *path) {
 @property(nonatomic,strong) UILabel *readout;
 @property(nonatomic,strong) UILabel *statusLabel;
 @property(nonatomic,strong) UISlider *slider;
-@property(nonatomic) BOOL changed;
 @property(nonatomic) unsigned openedSession;
 @end
 @implementation DTRatePanel
-- (void)commitRate {
-    [NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(commitRate) object:nil];
-    if (!self.changed || !trainerEnabled || self.openedSession!=transportID) return;
-    self.changed=NO;
-    float value=steppedTempo(self.slider.value);
-    if (value==selection.load()) return;
-    if (manager) {
-        markPractice();
-        ratePending=true;
-        self.statusLabel.text=@"本局练习 · 结算 0%";
-    }
-    selection.store(value);
-    DTSet(DTRate,@(tempoTick(value)));
+- (void)displayRate:(float)rate {
+    self.slider.value=rate;
+    self.readout.text=[NSString stringWithFormat:@"练习倍率   %.2f×",rate];
+    self.slider.accessibilityValue=[NSString stringWithFormat:@"%.2f×",rate];
 }
 - (void)applyRate:(UISlider *)slider {
-    slider.value=steppedTempo(slider.value);
-    self.changed=YES;
-    self.readout.text=[NSString stringWithFormat:@"练习倍率   %.2f×",slider.value];
-    slider.accessibilityValue=[NSString stringWithFormat:@"%.2f×",slider.value];
-    [NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(commitRate) object:nil];
-    [self performSelector:@selector(commitRate) withObject:nil afterDelay:.22 inModes:@[NSRunLoopCommonModes]];
-}
-- (void)viewWillDisappear:(BOOL)animated {
-    [self commitRate];
-    [super viewWillDisappear:animated];
+    if (!trainerEnabled || self.openedSession!=transportID) return;
+    float value=steppedTempo(slider.value);
+    [self displayRate:value];
+    DTSet(settings::Rate,tempoTick(value));
 }
 - (void)reset {
-    [self.slider setValue:1 animated:YES];
+    self.slider.value=1;
     [self applyRate:self.slider];
-    [self commitRate];
 }
 - (void)close { [self dismissViewControllerAnimated:YES completion:nil]; }
 - (void)editDelay {
@@ -426,7 +409,7 @@ bool installAll(const mach_header_64 *header,const char *path) {
     [edit addAction:[UIAlertAction actionWithTitle:@"保存" style:UIAlertActionStyleDefault handler:^(UIAlertAction *a){
         NSScanner *scan=[NSScanner scannerWithString:edit.textFields.firstObject.text?:@""];
         NSInteger ms=0;if ([scan scanInteger:&ms] && scan.isAtEnd && ms>=-200 && ms<=200) {
-            offsetMs.store((int)ms);[NSUserDefaults.standardUserDefaults setInteger:ms forKey:@"DTPracticeOffset"];
+            DTSet(settings::Delay,(int)ms+200);
         }
     }]];
     [self presentViewController:edit animated:YES completion:nil];
@@ -470,7 +453,6 @@ bool installAll(const mach_header_64 *header,const char *path) {
         self.slider.accessibilityLabel=@"练习倍率";
         self.slider.accessibilityValue=[NSString stringWithFormat:@"%.2f×",self.slider.value];
         [self.slider addTarget:self action:@selector(applyRate:) forControlEvents:UIControlEventValueChanged];
-        [self.slider addTarget:self action:@selector(commitRate) forControlEvents:UIControlEventTouchUpInside|UIControlEventTouchUpOutside];
         [stack addArrangedSubview:self.slider];
         UIStackView *limits=[UIStackView new];
         limits.distribution=UIStackViewDistributionEqualSpacing;
@@ -527,6 +509,7 @@ bool installAll(const mach_header_64 *header,const char *path) {
 @property(nonatomic,strong) UIButton *button;
 @property(nonatomic,strong) NSTimer *timer;
 @property(nonatomic) BOOL attempted;
+@property(nonatomic) uint64_t lastSnapshot;
 @end
 @implementation DTMenu
 - (void)applyTheme {
@@ -598,7 +581,12 @@ bool installAll(const mach_header_64 *header,const char *path) {
     if (dragging||beginRequested) cancelRequested=true;
 }
 - (void)reloadSettings {
-    DTConfig c=DTReadConfig();
+    settings::Snapshot snapshot;
+    if (!DTReadSnapshot(snapshot) || self.lastSnapshot==snapshot.pack()) return;
+    self.lastSnapshot=snapshot.pack();
+    DTConfig c=DTDecode(snapshot);
+    int oldDelay=offsetMs.exchange(c.delay);
+    if (sourceHandle && oldDelay!=c.delay) delaySeconds+=(c.delay-oldDelay)*.001f;
     float previous=selection.exchange(c.rate);
     BOOL rateChanged=previous!=c.rate;
     BOOL themeChanged=paletteIndex!=c.theme;
@@ -608,23 +596,28 @@ bool installAll(const mach_header_64 *header,const char *path) {
     changeEnabled(c.enabled);
     if (c.enabled && manager && rateChanged) {
         ratePending=true;
+        rateAfter=CACurrentMediaTime()+.12;
         markPractice();
     }
     if (themeChanged) [self applyTheme];
     UIViewController *panel=self.controlsWindow.rootViewController.presentedViewController;
-    if (!c.enabled || (rateChanged && [panel isKindOfClass:DTRatePanel.class]) ||
-        ((themeChanged || sensitivityChanged) && [panel isKindOfClass:DTSettingsPanel.class])) {
-        if ([panel isKindOfClass:DTRatePanel.class]) ((DTRatePanel *)panel).changed=NO;
+    if (!c.enabled) {
         [panel dismissViewControllerAnimated:NO completion:nil];
+        if (self.controlsWindow.isKeyWindow) [self.gameWindow makeKeyWindow];
+    } else if (rateChanged && [panel isKindOfClass:DTRatePanel.class]) {
+        [(DTRatePanel *)panel displayRate:c.rate];
+        if (manager) ((DTRatePanel *)panel).statusLabel.text=@"本局练习 · 结算 0%";
+    } else if ((themeChanged || sensitivityChanged) && [panel isKindOfClass:DTSettingsPanel.class]) {
+        [(DTSettingsPanel *)panel refreshControls];
     }
     self.controlsWindow.hidden=!c.enabled;
     self.display.paused=!c.enabled || !playing.load();
-    [self check:nil];
 }
 - (void)becameActive:(NSNotification *)note { [self reloadSettings]; }
 - (void)check:(NSTimer *)timer {
     UIApplication *app=UIApplication.sharedApplication;
     if (app.applicationState!=UIApplicationStateActive) return;
+    [self reloadSettings];
     if (!self.attempted) {
         for (uint32_t i=0;i<_dyld_image_count();i++) {
             const char *path=_dyld_get_image_name(i);
@@ -672,6 +665,8 @@ bool installAll(const mach_header_64 *header,const char *path) {
         overlay.hidden=NO;
     }
     if (!CGRectEqualToRect(self.controlsWindow.frame,window.frame)) self.controlsWindow.frame=window.frame;
+    if (self.controlsWindow.isKeyWindow && !self.controlsWindow.rootViewController.presentedViewController)
+        [self.gameWindow makeKeyWindow];
     self.display.paused=!playing.load();
     [self refreshTrack:self.display];
 }
@@ -682,6 +677,7 @@ bool installAll(const mach_header_64 *header,const char *path) {
     panel.preferredContentSize=size;
     panel.popoverPresentationController.sourceView=button;
     panel.popoverPresentationController.sourceRect=button.bounds;
+    [self.controlsWindow makeKeyWindow];
     [vc presentViewController:panel animated:YES completion:nil];
 }
 - (void)open {
@@ -691,20 +687,21 @@ bool installAll(const mach_header_64 *header,const char *path) {
 }
 - (void)settings {
     DTSettingsPanel *panel=[DTSettingsPanel new];
-    __weak DTMenu *menu=self;
-    panel.onChange=^{[menu applyTheme];};
     [self presentPanel:panel from:self.settingsButton size:CGSizeMake(315,216)];
 }
 - (void)start {
     // Upgrade each explicitly saved 0.4.x key only if the companion has not set it.
     NSUserDefaults *legacy=NSUserDefaults.standardUserDefaults;
     NSNumber *rate=[legacy objectForKey:@"DTPracticeRate"];
-    if (rate && ![DTStore() objectForKey:DTRate]) DTSet(DTRate,@(tempoTick(rate.doubleValue/100)));
-    NSNumber *theme=[legacy objectForKey:@"DTToolbarTheme"], *gain=[legacy objectForKey:@"DTScrubSensitivity"];
-    if (theme && ![DTStore() objectForKey:DTTheme]) DTSet(DTTheme,theme);
-    if (gain && ![DTStore() objectForKey:DTSensitivity]) DTSet(DTSensitivity,gain);
-    int ms=(int)[NSUserDefaults.standardUserDefaults integerForKey:@"DTPracticeOffset"];
-    if (ms>=-200 && ms<=200) offsetMs.store(ms);
+    settings::Snapshot saved;
+    if (DTReadSnapshot(saved)) {
+        if (rate && !(saved.present&(1u<<settings::Rate))) DTSet(settings::Rate,tempoTick(rate.doubleValue/100),true);
+        NSNumber *theme=[legacy objectForKey:@"DTToolbarTheme"], *gain=[legacy objectForKey:@"DTScrubSensitivity"];
+        if (theme && !(saved.present&(1u<<settings::Theme))) DTSet(settings::Theme,theme.intValue,true);
+        if (gain && !(saved.present&(1u<<settings::Gain))) DTSet(settings::Gain,lroundf(gain.floatValue*100),true);
+        NSNumber *delay=[legacy objectForKey:@"DTPracticeOffset"];
+        if (delay && !(saved.present&(1u<<settings::Delay))) DTSet(settings::Delay,delay.intValue+200,true);
+    }
     self.bar=[UIView new];
     self.bar.layer.cornerRadius=14;
     self.bar.layer.borderWidth=1;
@@ -729,9 +726,20 @@ bool installAll(const mach_header_64 *header,const char *path) {
     [self.display addToRunLoop:NSRunLoop.mainRunLoop forMode:NSRunLoopCommonModes];
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(resign:) name:UIApplicationWillResignActiveNotification object:nil];
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(becameActive:) name:UIApplicationDidBecomeActiveNotification object:nil];
-    DTObserve(^{[self reloadSettings];});
+    DTObserve(^{[self reloadSettings];[self check:nil];},^{
+        self.lastSnapshot=0;
+        [self reloadSettings];
+        UIViewController *panel=self.controlsWindow.rootViewController.presentedViewController;
+        if ([panel isKindOfClass:DTRatePanel.class]) {
+            [(DTRatePanel *)panel displayRate:selection.load()];
+            ((DTRatePanel *)panel).statusLabel.text=@"设置保存失败，请重试";
+        } else if ([panel isKindOfClass:DTSettingsPanel.class]) {
+            [(DTSettingsPanel *)panel refreshControls];
+            ((DTSettingsPanel *)panel).sensitivityLabel.text=@"设置保存失败，请重试";
+        }
+    });
     self.timer=[NSTimer timerWithTimeInterval:.5 target:self selector:@selector(check:) userInfo:nil repeats:YES];
-    [NSRunLoop.mainRunLoop addTimer:self.timer forMode:NSRunLoopCommonModes];[self reloadSettings];
+    [NSRunLoop.mainRunLoop addTimer:self.timer forMode:NSRunLoopCommonModes];[self reloadSettings];[self check:nil];
 }
 @end
 

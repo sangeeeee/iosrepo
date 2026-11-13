@@ -12,7 +12,9 @@ static UIColor *DTColor(unsigned rgb) {
 }
 
 @interface DTSettingsPanel : UIViewController
-@property(nonatomic,copy) void (^onChange)(void);
+@property(nonatomic,strong) UISegmentedControl *themes;
+@property(nonatomic,strong) UISlider *gain;
+- (void)refreshControls;
 @property(nonatomic,strong) UILabel *sensitivityLabel;
 @end
 
@@ -21,14 +23,18 @@ static UIColor *DTColor(unsigned rgb) {
     self.sensitivityLabel.text=[NSString stringWithFormat:@"进度条拖动灵敏度   %.0f%%",scrubSensitivity*100];
 }
 - (void)themeChanged:(UISegmentedControl *)sender {
-    paletteIndex=sender.selectedSegmentIndex;
-    DTSet(DTTheme,@(paletteIndex));
-    if (self.onChange) self.onChange();
+    DTSet(settings::Theme,(int)sender.selectedSegmentIndex);
 }
 - (void)sensitivityChanged:(UISlider *)sender {
-    scrubSensitivity=roundf(sender.value)/100;
-    DTSet(DTSensitivity,@(scrubSensitivity));
-    sender.accessibilityValue=[NSString stringWithFormat:@"%.0f%%",scrubSensitivity*100];
+    sender.value=roundf(sender.value);
+    DTSet(settings::Gain,(int)sender.value);
+    sender.accessibilityValue=[NSString stringWithFormat:@"%.0f%%",sender.value];
+    self.sensitivityLabel.text=[NSString stringWithFormat:@"进度条拖动灵敏度   %@",sender.accessibilityValue];
+}
+- (void)refreshControls {
+    self.themes.selectedSegmentIndex=paletteIndex;
+    self.gain.value=roundf(scrubSensitivity*100);
+    self.gain.accessibilityValue=[NSString stringWithFormat:@"%.0f%%",self.gain.value];
     [self updateLabel];
 }
 - (void)close { [self dismissViewControllerAnimated:YES completion:nil]; }
@@ -49,7 +55,7 @@ static UIColor *DTColor(unsigned rgb) {
     UILabel *heading=[UILabel new];
     heading.text=@"工具栏配色";
     [stack addArrangedSubview:heading];
-    UISegmentedControl *themes=[[UISegmentedControl alloc] initWithItems:DTThemeNames()];
+    UISegmentedControl *themes=self.themes=[[UISegmentedControl alloc] initWithItems:DTThemeNames()];
     themes.selectedSegmentIndex=paletteIndex;
     themes.accessibilityLabel=heading.text;
     [themes addTarget:self action:@selector(themeChanged:) forControlEvents:UIControlEventValueChanged];
@@ -57,7 +63,7 @@ static UIColor *DTColor(unsigned rgb) {
     self.sensitivityLabel=[UILabel new];
     [self updateLabel];
     [stack addArrangedSubview:self.sensitivityLabel];
-    UISlider *slider=[UISlider new];
+    UISlider *slider=self.gain=[UISlider new];
     slider.minimumValue=practice::minSensitivity*100;
     slider.maximumValue=practice::maxSensitivity*100;
     slider.value=scrubSensitivity*100;

@@ -1,51 +1,51 @@
 #pragma once
 #import <UIKit/UIKit.h>
-#include <dlfcn.h>
 #include <notify.h>
 #include "Tempo.hpp"
+#include "SettingsWire.hpp"
 
-// Only the public Cephei selectors used by this app. The rootless package owns the framework.
-@protocol DTPreferenceStore
-- (instancetype)initWithIdentifier:(NSString *)name;
-- (id)objectForKey:(NSString *)key;
-- (NSDictionary *)dictionaryRepresentation;
-- (void)setObject:(id)value forKey:(NSString *)key;
-@end
-static inline id<DTPreferenceStore> DTStore() {
-    static id<DTPreferenceStore> store;
-    static dispatch_once_t once;
-    dispatch_once(&once,^{
-        dlopen("/var/jb/Library/Frameworks/Cephei.framework/Cephei",RTLD_NOW|RTLD_LOCAL);
-        Class cls=NSClassFromString(@"HBPreferences");
-        store=[(id<DTPreferenceStore>)[cls alloc] initWithIdentifier:@"com.linghe.deemotempo.settings"];
-    });
-    return store;
-}
-static NSString *const DTEnabled=@"Enabled", *const DTRate=@"RateTick", *const DTTheme=@"Theme",
-                *const DTSensitivity=@"Sensitivity";
-static constexpr char DTSettingsChanged[]="com.linghe.deemotempo.settingsChanged";
 struct DTConfig {
     bool enabled;
     float rate;
     NSInteger theme;
     float sensitivity;
+    int delay;
 };
-static inline DTConfig DTReadConfig() {
-    id<DTPreferenceStore> store=DTStore();
-    NSDictionary *values=[store dictionaryRepresentation];
-    NSNumber *enabled=values[DTEnabled], *rate=values[DTRate];
-    NSInteger theme=[values[DTTheme] integerValue];
-    float sensitivity=[values[DTSensitivity] floatValue];
-    return {store && (!enabled || enabled.boolValue),
-            rate?steppedTempo(rate.doubleValue/20):1.f, theme>=0 && theme<=2?theme:0,
-            sensitivity>=.25f && sensitivity<=2.5f?sensitivity:1.f};
+static int DTToken(settings::Key key) {
+    static int tokens[settings::Count];
+    static dispatch_once_t once;
+    dispatch_once(&once,^{
+        for(int i=0;i<settings::Count;++i)
+            if (notify_register_check(settings::requests[i],&tokens[i])!=NOTIFY_STATUS_OK) tokens[i]=-1;
+    });
+    return tokens[key];
 }
-static inline void DTSet(NSString *key,NSNumber *value) {
-    [DTStore() setObject:value forKey:key];
-    notify_post(DTSettingsChanged);
+static bool DTReadSnapshot(settings::Snapshot &out) {
+    static int token=-1;
+    static dispatch_once_t once;
+    dispatch_once(&once,^{notify_register_check(settings::changed,&token);});
+    uint64_t value=0;
+    return token>=0 && notify_get_state(token,&value)==NOTIFY_STATUS_OK && out.unpack(value);
 }
-static inline void DTObserve(void (^handler)(void)) {
-    int token=0;
-    notify_register_dispatch(DTSettingsChanged,&token,dispatch_get_main_queue(),^(int){handler();});
+static DTConfig DTDecode(const settings::Snapshot &snapshot) {
+    const int *v=snapshot.values;
+    return {bool(v[settings::Enabled]),v[settings::Rate]/20.f,v[settings::Theme],v[settings::Gain]/100.f,v[settings::Delay]-200};
+}
+static inline bool DTReadConfig(DTConfig &config) {
+    settings::Snapshot snapshot;
+    if (!DTReadSnapshot(snapshot)) return false;
+    config=DTDecode(snapshot);
+    return true;
+}
+static bool DTSet(settings::Key key,int value,bool migrate=false) {
+    if (value<settings::minimum[key] || value>settings::maximum[key]) return false;
+    int token=DTToken(key);
+    return token>=0 && notify_set_state(token,settings::request(value,migrate))==NOTIFY_STATUS_OK &&
+           notify_post(settings::requests[key])==NOTIFY_STATUS_OK;
+}
+static void DTObserve(void (^handler)(void),void (^onFailure)(void)) {
+    int token=-1;
+    notify_register_dispatch(settings::changed,&token,dispatch_get_main_queue(),^(int){handler();});
+    notify_register_dispatch(settings::failed,&token,dispatch_get_main_queue(),^(int){onFailure();});
 }
 static inline NSArray<NSString *> *DTThemeNames() { return @[@"白色",@"深色",@"浅蓝"]; }

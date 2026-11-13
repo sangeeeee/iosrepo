@@ -46,6 +46,7 @@ float songClock() { return field<float>(field<Object>(currentPlane(),planeParams
 practice::LoopRange region;
 practice::RateObservation externalRate;
 bool toolPaused,heldPreview,ratePending,recoverOnResume;
+double rateAfter;
 uint32_t practiceResultHandle;
 Object practiceResult; // still rooted by game if GC handle allocation fails
 
@@ -390,7 +391,7 @@ void updateTransport(Object owner,Method method) {
     // While disabled, keep only the chart history needed to attach mid-song.
     // Native playback, input and scoring run without transport commands.
     if (!trainerEnabled) {originalUpdate(owner,method);return;}
-    if (owner==manager && ratePending && !paused && !dragging && !beginRequested) applyLiveRate();
+    if (owner==manager && ratePending && CACurrentMediaTime()>=rateAfter && !paused && !dragging && !beginRequested) applyLiveRate();
     if (!manager || owner!=manager || !chartReady) {
         originalUpdate(owner,method);return;
     }
