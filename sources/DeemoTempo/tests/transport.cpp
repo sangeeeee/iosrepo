@@ -24,7 +24,7 @@ int main(){
     puts("PASS: tap hit area, near-thumb drag, off-thumb and vertical swipe rejection, responsive toolbar widths");
     // An early hit, a late miss and a chord. Decision time, not nominal
     // beat time, determines what survives a rewind.
-    std::vector<Note> chart={{1,1,true},{2,2,true},{3,2,true},{4,2.4f,false},{5,3,true},{6,4,true}};
+    std::vector<Note> chart={{1,1,0},{2,2,0},{3,2,0},{4,2.4f,4},{5,3,0},{6,4,0}};
     Journal j;
     j.record(1,1.05f,1);j.record(2,1.95f,.8f);j.record(3,2.15f,0);
     j.move(2.3f,2.05f,chart);
@@ -97,5 +97,33 @@ int main(){
     assert(window.first==window.end); // genuinely empty section
     window=visibleNotes(chart,1.99f,2.01f);
     assert(window.first==1 && window.end==3); // chord returns on backwards motion
+    // Adjacent timestamps from Entrance Hard and Magnolia Hard. Exercise a
+    // seek between them with a background note, a chord and a late judgement.
+    for (auto pair : {std::pair<float,float>{56.671875f,56.66796875f},
+                      std::pair<float,float>{89.4453125f,89.4375f}}) {
+        const float later=pair.first, earlier=pair.second, target=(earlier+later)/2;
+        std::vector<Note> native={{1,earlier-1,-3},{2,later,2},{3,earlier,-2},
+                                  {4,earlier,4},{5,earlier,0}};
+        const auto ordered=chronologicalNotes(native);
+        assert(native[1].id==2 && ordered[4].id==2);
+        auto visible=visibleNotes(ordered,earlier,target);
+        assert(visible.first==1 && visible.end==4);
+        assert(ordered[1].id==3 && ordered[2].id==4 && ordered[3].id==5);
+        Journal history;
+        history.move(0,target,ordered);
+        assert(history.decisions.size()==2 && history.done.count(3) && history.done.count(5));
+        auto consumed=history.done;
+        consumed.insert(4);
+        assert(resumeIndex(native,target,consumed)==1); // future note precedes consumed entries
+        history.move(target,earlier-.1f,ordered);
+        assert(history.done.empty());
+        history.move(earlier-.1f,later+1,ordered);
+        assert(history.decisions.size()==3);
+        consumed.insert(2);
+        assert(resumeIndex(native,later+1,consumed)==native.size());
+        consumed.erase(3);
+        assert(resumeIndex(native,later+1,consumed)==2); // overdue and still unjudged
+    }
+    puts("PASS: out-of-order Hard charts, stable chords, preview, seek judgements and native restart index");
     puts("PASS: 2.5x slower follow, endpoint speed, marker replacement/cancel, loop limits and repeated judgement rollback");
 }

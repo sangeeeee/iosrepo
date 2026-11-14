@@ -26,7 +26,7 @@ unsigned audioEpoch=1;
 bool rescheduling,transportSeek;
 float remainingWait;
 practice::Journal journal;
-std::vector<practice::Note> chartNotes;
+std::vector<practice::Note> nativeNotes,notesByTime;
 std::unordered_map<uintptr_t,size_t> noteIndices;
 std::unordered_set<uintptr_t> rebuildSkip;
 bool chartReady,historyOK,dragging,beginRequested,finishRequested,cancelRequested;
@@ -127,7 +127,7 @@ void renderPreview(float time) {
     Object params=field<Object>(plane,planeParams);
     at<FloatAction>(Deemo::setSongTime)(params,time,nullptr);
     float horizon=at<float(*)(Object,Method)>(Deemo::activeTime)(params,nullptr);
-    const auto range=practice::visibleNotes(chartNotes,time,std::max(time,horizon));
+    const auto range=practice::visibleNotes(notesByTime,time,std::max(time,horizon));
     for (auto it=previewNotes.begin();it!=previewNotes.end();) {
         if (it->first>=range.first && it->first<range.end) {++it;continue;}
         releasePreviewNote(it->second);
@@ -135,8 +135,8 @@ void renderPreview(float time) {
     }
     const auto step=at<Step>(Deemo::positionStep);
     for (size_t index=range.first;index<range.end;++index) {
-        const auto &note=chartNotes[index];
-        if (!note.scored) continue;
+        const auto &note=notesByTime[index];
+        if (!note.scored()) continue;
         auto found=previewNotes.find(index);
         Object iterator=nullptr;
         if (found==previewNotes.end()) {
@@ -169,7 +169,7 @@ void resetTransport() {
     ++transportID;++audioEpoch;
     abandonGesture();
     chartReady=false;historyOK=true;blockPast=false;
-    journal={};chartNotes.clear();noteIndices.clear();soundLog.clear();backingLog.clear();rebuildSkip.clear();
+    journal={};nativeNotes.clear();notesByTime.clear();noteIndices.clear();soundLog.clear();backingLog.clear();rebuildSkip.clear();
     durationSec=progressSec=positionSec=aimSec=0;
     // Pending coroutines can survive a retry. Their generation invalidates them
     // until their next step; a newly allocated enumerator always replaces its entry.
@@ -187,21 +187,22 @@ bool loadChart() {
         field<uintptr_t>(array,0x18)<static_cast<unsigned>(count)) return false;
     float duration=at<float(*)(Object,Method)>(Deemo::clipLength)(clip,nullptr);
     if (!std::isfinite(duration) || duration<=0) return false;
-    chartNotes.clear();noteIndices.clear();
+    nativeNotes.clear();noteIndices.clear();
+    nativeNotes.reserve(count);
     int scored=0;
     for (int i=0;i<count;++i) {
         Object info=field<Object>(array,0x20+i*sizeof(Object));
         if (!info) return false;
         float t=field<float>(info,0x38)+field<float>(info,0x3c);
         float x=field<float>(info,0x30);
-        if (!std::isfinite(t) || !std::isfinite(x) || (!chartNotes.empty() && t<chartNotes.back().time)) return false;
+        if (!std::isfinite(t) || !std::isfinite(x)) return false;
         auto id=reinterpret_cast<uintptr_t>(info);
         if (!noteIndices.emplace(id,i).second) return false;
-        bool playable=x>=-2 && x<=2;
-        scored+=playable;
-        chartNotes.push_back({id,t,playable});
+        nativeNotes.push_back({id,t,x});
+        scored+=nativeNotes.back().scored();
     }
     if (scored!=field<int>(result,0x1c) || field<int>(result,0x20)!=0) return false;
+    notesByTime=practice::chronologicalNotes(nativeNotes);
     durationSec=duration;
     return true;
 }
@@ -229,7 +230,7 @@ Object spawn(Object plane,Object info,Method method) {
         if (rebuildSkip.count(id)) return nullptr;
         if (previewing) {
             auto it=noteIndices.find(id);
-            if (it!=noteIndices.end() && chartNotes[it->second].time<positionSec) return nullptr;
+            if (it!=noteIndices.end() && nativeNotes[it->second].time<positionSec) return nullptr;
         }
     }
     return originalSpawn(plane,info,method);
@@ -297,13 +298,7 @@ void rebuildPlane(float target) {
     rebuildSkip.clear();
     rebuildSkip=journal.done;
     for (auto e:backingLog) rebuildSkip.insert(reinterpret_cast<uintptr_t>(e.sound));
-    size_t i=0;
-    for (;i<chartNotes.size();++i) {
-        const auto& n=chartNotes[i];
-        if (n.time>=target) break;
-        if (rebuildSkip.count(n.id) || field<float>(reinterpret_cast<Object>(n.id),0x30)<-2) continue;
-        break; // Overdue but still pending at the selected instant.
-    }
+    const size_t i=practice::resumeIndex(nativeNotes,target,rebuildSkip);
     writeField<int>(plane,0x60,(int)i);
     blockPast=true;
     at<FloatAction>(Deemo::updatePlaneTime)(plane,target,nullptr);
@@ -312,17 +307,17 @@ void rebuildPlane(float target) {
 void finishScrub() {
     float target=cancelRequested?originSec:positionSec;
     float branch=cancelRequested?originSec:std::min(lowestSec,target);
-    journal.move(originSec,branch,chartNotes);
-    journal.move(branch,target,chartNotes);
+    journal.move(originSec,branch,notesByTime);
+    journal.move(branch,target,notesByTime);
     backingLog.erase(std::remove_if(backingLog.begin(),backingLog.end(),
                         [&](const SoundEvent& e){return e.time>branch;}),backingLog.end());
     if (target>branch) {
         std::unordered_set<Object> consumed;
         for (auto e:backingLog) consumed.insert(e.sound);
-        for (const auto& n:chartNotes) {
+        for (const auto& n:notesByTime) {
             if (n.time>=target) break;
             Object info=reinterpret_cast<Object>(n.id);
-            if (!n.scored && field<float>(info,0x30)>2 && consumed.insert(info).second)
+            if (n.position>2 && consumed.insert(info).second)
                 backingLog.push_back({info,std::nextafter(std::max(n.time,branch),target)});
         }
     }

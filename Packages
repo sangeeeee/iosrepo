@@ -215,6 +215,22 @@ SHA1: 7c9566a3848271dfed59e917e55970e91597764b
 SHA256: 5138b167efca86492ec9630257d6cb8b21f989124961def208d1dfe38e1b98d2
 SHA512: 8ac39d487aabdacb4816344e42089fcfba901e49b471d08e5adbe53b43b640e8efe249e5718cb54babab33b8ea0c795c6827653da50d81b34c4116e68ffe27d5
 
+Package: com.linghe.deemotempo
+Name: DEEMO Trainer
+Version: 0.9~beta4
+Architecture: iphoneos-arm64
+Description: Home Screen settings and live practice controls for DEEMO 5.0.8 (1001405).
+Section: Tweaks
+Author: Local Build
+Maintainer: Local Build
+Depends: mobilesubstrate, uikittools, firmware (>= 15.0)
+Filename: ./debs/com.linghe.deemotempo_0.9~beta4_iphoneos-arm64.deb
+Size: 217230
+MD5sum: 93b0cdd879fa5d52254469dec16ee287
+SHA1: b5d1f50b16a84080c27f7be4494fc1b00b3969db
+SHA256: cc469c79d6cc081e06acf31086d4fc179fc0f5b8ec7c862f9ba9667a61981795
+SHA512: 72e5f36cb4989593ed9459de3accf08533ab10430ceb15c81dedb36f2483de2650c5aa1850f180e4ee93fcbc5205c280201abedf0d76ef03399edf5cd382308b
+
 Package: com.linghe.pianolab.rootful
 Name: PianoLab (Rootful Beta)
 Version: 0.1.0~beta1

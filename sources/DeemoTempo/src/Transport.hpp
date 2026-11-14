@@ -31,8 +31,26 @@ struct RailTouch {
 struct Note {
     uintptr_t id;
     float time;
-    bool scored;
+    float position;
+    bool scored() const { return position>=-2 && position<=2; }
 };
+
+// Unity's spawn cursor indexes the original list. Preview and score replay
+// search by time, which can decrease between adjacent entries in that list.
+inline std::vector<Note> chronologicalNotes(const std::vector<Note>& nativeNotes) {
+    auto notes=nativeNotes;
+    std::stable_sort(notes.begin(),notes.end(),
+        [](const Note& a,const Note& b){return a.time<b.time;});
+    return notes;
+}
+inline size_t resumeIndex(const std::vector<Note>& nativeNotes,float target,
+                          const std::unordered_set<uintptr_t>& consumed) {
+    for (size_t i=0;i<nativeNotes.size();++i) {
+        const auto& n=nativeNotes[i];
+        if (n.time>=target || (n.position>=-2 && !consumed.count(n.id))) return i;
+    }
+    return nativeNotes.size();
+}
 struct Decision {
     uintptr_t id;
     float time;
@@ -60,7 +78,7 @@ struct Journal {
                 if (n.time>=to) break;
                 // An overdue, still-unjudged note in the original timing window
                 // is also passed when skipping. Previously recorded hits win.
-                if (n.scored) record(n.id,std::nextafter(std::max(n.time,from),to),0);
+                if (n.scored()) record(n.id,std::nextafter(std::max(n.time,from),to),0);
             }
         }
     }

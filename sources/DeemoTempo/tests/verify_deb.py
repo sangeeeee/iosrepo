@@ -28,7 +28,7 @@ while offset<len(raw):
 data=archives['data.tar.gz']
 control=archives['control.tar.gz']
 metadata=control['control'][0].decode().splitlines()
-for field in ['Package: com.linghe.deemotempo','Name: DEEMO Trainer','Version: 0.9~beta3','Architecture: iphoneos-arm64']:
+for field in ['Package: com.linghe.deemotempo','Name: DEEMO Trainer','Version: 0.9~beta4','Architecture: iphoneos-arm64']:
     assert field in metadata,field
 deps=next(line for line in metadata if line.startswith('Depends:'))
 assert 'ws.hbang.common' not in deps and 'firmware (>= 15.0)' in deps and 'uikittools' in deps

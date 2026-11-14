@@ -1,6 +1,8 @@
 # DEEMO Trainer 0.9 beta
 
-适用于 DEEMO 5.0.8（1001405，com.rayark.pluto），适配的 UnityFramework UUID 为 37b8f14d-ccfd-3358-8c31-cbe88ff67b2a。升级沿用原软件包 com.linghe.deemotempo，Sileo 版本为 0.9~beta3。
+适用于 DEEMO 5.0.8（1001405，com.rayark.pluto），适配的 UnityFramework UUID 为 37b8f14d-ccfd-3358-8c31-cbe88ff67b2a。升级沿用原软件包 com.linghe.deemotempo，Sileo 版本为 0.9~beta4。
+
+此版修复了 Entrance 和 Magnolia 的 Hard 难度开曲后不显示进度条的问题。练习器按音符时间计算跳转与预览，恢复播放时沿用游戏原有的出谱顺序。这个修复也适用于其他音符时间局部倒序的谱面。
 
 在 Sileo 安装后，桌面会出现带银色扳手的 **DEEMO Trainer**。首次安装或升级后，从多任务界面完全退出 DEEMO 并重新打开一次，载入新版。桌面应用和游戏浮窗共用一份设置。随包安装的设置服务以 mobile 身份保存每一项变更，再通知两端原地刷新。切回前台时会读取最新值。升级会尝试沿用旧版已保存的配置。
 
