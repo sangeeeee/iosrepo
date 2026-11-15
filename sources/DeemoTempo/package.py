@@ -6,19 +6,24 @@ sys.dont_write_bytecode=True
 sys.path.insert(0,str(repo/'sources/PianoLab'))
 from packaging_helpers import signature_check,archive
 package='com.linghe.deemotempo'
-version='0.9~beta4'
+version='0.9~beta5'
 binary=(root/'build/DeemoTempo.dylib').read_bytes()
 check=signature_check(binary,expected_subtype=0,expected_kind=6)
 assert check['code_pages_verified']>0
 base='./var/jb/Library/MobileSubstrate/DynamicLibraries/DeemoTempo'
 payload={base+'.dylib':(binary,0o755),base+'.plist':(plistlib.dumps({'Filter':{'Bundles':['com.rayark.pluto']}}),0o644)}
+second=base+'II'
+second_binary=(root/'build/DeemoTempoII.dylib').read_bytes()
+signature_check(second_binary,expected_subtype=0,expected_kind=6)
+payload[second+'.dylib']=(second_binary,0o755)
+payload[second+'.plist']=(plistlib.dumps({'Filter':{'Bundles':['com.rayark.deemo2']}}),0o644)
 app='./var/jb/Applications/DeemoTrainer.app'
 executable=(root/'build/DeemoTrainer').read_bytes()
 signature_check(executable,expected_subtype=0,expected_kind=2)
 orient=['UIInterfaceOrientationPortrait','UIInterfaceOrientationLandscapeLeft','UIInterfaceOrientationLandscapeRight']
 info={'CFBundleExecutable':'DeemoTrainer','CFBundleIdentifier':'com.linghe.deemotrainer',
       'CFBundleName':'DEEMO Trainer','CFBundleDisplayName':'DEEMO Trainer','CFBundlePackageType':'APPL',
-      'CFBundleVersion':'93','CFBundleShortVersionString':'0.9','MinimumOSVersion':'15.0',
+      'CFBundleVersion':'94','CFBundleShortVersionString':'0.9','MinimumOSVersion':'15.0',
       'UIDeviceFamily':[1,2],'LSRequiresIPhoneOS':True,'UILaunchScreen':{},
       'UISupportedInterfaceOrientations':orient,'UISupportedInterfaceOrientations~ipad':orient+['UIInterfaceOrientationPortraitUpsideDown'],
       'CFBundleIcons':{'CFBundlePrimaryIcon':{'CFBundleIconFiles':['Icon-60']}},
@@ -39,7 +44,7 @@ control=f"""Package: {package}
 Name: DEEMO Trainer
 Version: {version}
 Architecture: iphoneos-arm64
-Description: Home Screen settings and live practice controls for DEEMO 5.0.8 (1001405).
+Description: Home Screen settings and live practice controls for DEEMO 5.0.8 and DEEMO II 4.1.9.
 Section: Tweaks
 Author: Local Build
 Maintainer: Local Build

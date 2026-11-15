@@ -95,7 +95,7 @@
 - (NSString *)tableView:(UITableView *)table titleForFooterInSection:(NSInteger)section {
     DTConfig current;
     if (section==0 && !DTReadConfig(current)) return @"正在等待设置服务。";
-    return section==0?@"切换后，正在运行的 DEEMO 也会应用此设置。":nil;
+    return section==0?@"切换后，DEEMO 和 DEEMO II 都会应用此设置。":nil;
 }
 - (UITableViewCell *)tableView:(UITableView *)table cellForRowAtIndexPath:(NSIndexPath *)path {
     UITableViewCell *cell=[[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:nil];

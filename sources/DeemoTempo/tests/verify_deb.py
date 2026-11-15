@@ -28,7 +28,7 @@ while offset<len(raw):
 data=archives['data.tar.gz']
 control=archives['control.tar.gz']
 metadata=control['control'][0].decode().splitlines()
-for field in ['Package: com.linghe.deemotempo','Name: DEEMO Trainer','Version: 0.9~beta4','Architecture: iphoneos-arm64']:
+for field in ['Package: com.linghe.deemotempo','Name: DEEMO Trainer','Version: 0.9~beta5','Architecture: iphoneos-arm64']:
     assert field in metadata,field
 deps=next(line for line in metadata if line.startswith('Depends:'))
 assert 'ws.hbang.common' not in deps and 'firmware (>= 15.0)' in deps and 'uikittools' in deps
@@ -41,10 +41,11 @@ for name,edge in [('Icon-60@2x',120),('Icon-60@3x',180),('Icon-76',76),('Icon-76
 assert info['CFBundleIcons~ipad']['CFBundlePrimaryIcon']['CFBundleIconFiles']==['Icon-76','Icon-83.5']
 lib='var/jb/Library/MobileSubstrate/DynamicLibraries/DeemoTempo'
 assert plistlib.loads(data[lib+'.plist'][0])=={'Filter':{'Bundles':['com.rayark.pluto']}}
+assert plistlib.loads(data[lib+'II.plist'][0])=={'Filter':{'Bundles':['com.rayark.deemo2']}}
 job=plistlib.loads(data['var/jb/Library/LaunchDaemons/com.linghe.deemotrainer.settings.plist'][0])
 assert job['UserName']=='mobile' and job['KeepAlive']
 daemon=job['ProgramArguments'][0].lstrip('/')
-for path,kind in [(app+info['CFBundleExecutable'],2),(lib+'.dylib',6),(daemon,2)]:
+for path,kind in [(app+info['CFBundleExecutable'],2),(lib+'.dylib',6),(lib+'II.dylib',6),(daemon,2)]:
     binary,mode=data[path]
     assert mode==0o755 and signature_check(binary,0,kind)['code_pages_verified']>0
     pos=32

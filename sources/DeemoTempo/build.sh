@@ -23,3 +23,7 @@ linkflags=(-arch arm64 -syslibroot "$sdk" -platform_version ios 15.0 16.5 -lc++ 
 "$llvm/lib/llvm-23/bin/clang" "${flags[@]}" -c src/SettingsService.mm -o build/SettingsService.o
 "$tools/native/bin/aarch64-apple-darwin-ld" -arch arm64 -syslibroot "$sdk" -platform_version ios 15.0 16.5 -lc++ -lSystem -lobjc -framework Foundation -adhoc_codesign -o build/deemotrainer-settings build/SettingsService.o
 "$tools/linux/iphone/bin/ldid" -S -Cadhoc build/deemotrainer-settings
+
+"$llvm/lib/llvm-23/bin/clang" "${flags[@]}" -c src/AdapterII.mm -o build/AdapterII.o
+"$tools/native/bin/aarch64-apple-darwin-ld" "${linkflags[@]}" -dylib -install_name @rpath/DeemoTempoII.dylib -o build/DeemoTempoII.dylib build/AdapterII.o -framework AVFoundation -framework QuartzCore -framework CoreGraphics
+"$tools/linux/iphone/bin/ldid" -S -Cadhoc build/DeemoTempoII.dylib
