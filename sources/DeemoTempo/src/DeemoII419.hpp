@@ -25,6 +25,7 @@ constexpr Entry resetResult{0x43e2c14,0x6dbb23e9};
 constexpr Entry addJudge{0x43e33f4,0x6db82beb};
 constexpr Entry judge{0x43bec20,0xd10283ff};
 constexpr Entry settle{0x43e4274,0xa9bd57f6};
+constexpr Entry showResultAnimation{0x43d0fc8,0xa9be4ff4};
 constexpr Entry resultDone{0x43d6d0c,0x52800028};
 constexpr Entry loadPlane{0x43d2c20,0xa9bb67fa};
 constexpr Entry release{0x43d7bcc,0xf9401c00};
@@ -36,6 +37,6 @@ constexpr Entry action{0x15f1514,0xa9be4ff4};
 constexpr Entry pauseMusic{0x43d3c84,0xa9bd57f6};
 constexpr Entry resumeMusic{0x43d3e10,0x6dbc23e9};
 constexpr Entry activeSound{0x43c1f04,0xa9bd57f6},retry{0x43d5210,0x6db923e9};
-constexpr Entry entries[]={frame,songTime,setTime,normalSong,getSong,volume,syncAudio,syncChart,calibratedMS,jump,disableNotes,updatePlane,spawn,sound,resetKey,cancelKey,stopID,cancelCallback,resultInit,resetResult,addJudge,judge,settle,resultDone,loadPlane,release,isPaused,hasBank,tryBank,decode,action,pauseMusic,resumeMusic,activeSound,retry};
+constexpr Entry entries[]={frame,songTime,setTime,normalSong,getSong,volume,syncAudio,syncChart,calibratedMS,jump,disableNotes,updatePlane,spawn,sound,resetKey,cancelKey,stopID,cancelCallback,resultInit,resetResult,addJudge,judge,settle,showResultAnimation,resultDone,loadPlane,release,isPaused,hasBank,tryBank,decode,action,pauseMusic,resumeMusic,activeSound,retry};
 constexpr uint8_t uuid[]={0xc5,0xc5,0x7a,0x16,0x43,0xe8,0x3d,0xf4,0xa1,0xb2,0xd8,0x8e,0x89,0x44,0x9b,0x21};
 }

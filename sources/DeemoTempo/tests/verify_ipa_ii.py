@@ -1,6 +1,7 @@
 """Validate the second adapter against the user's copy of DEEMO II 4.1.9.
 Optional dependency directories provide UnityPy and Unicorn. No assets are exported.
 """
+import argparse
 import json
 import plistlib
 import re
@@ -10,14 +11,19 @@ import zipfile
 from pathlib import Path
 
 root = Path(__file__).resolve().parents[1]
-sys.path[:0] = [str(Path(p).resolve()) for p in sys.argv[2:]]
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument('ipa')
+parser.add_argument('dependencies', nargs='*')
+parser.add_argument('--adapter', type=Path, help='also exercise the built dylib against the result-screen waits')
+args = parser.parse_args()
+sys.path[:0] = [str(Path(p).resolve()) for p in args.dependencies]
 import UnityPy
 from unicorn import Uc, UC_ARCH_ARM64, UC_MODE_ARM, UC_HOOK_CODE
 from unicorn.arm64_const import (UC_ARM64_REG_X0, UC_ARM64_REG_X1, UC_ARM64_REG_X2,
                                 UC_ARM64_REG_X3, UC_ARM64_REG_X4, UC_ARM64_REG_SP,
                                 UC_ARM64_REG_LR, UC_ARM64_REG_PC, UC_ARM64_REG_S0)
 
-with zipfile.ZipFile(sys.argv[1]) as ipa:
+with zipfile.ZipFile(args.ipa) as ipa:
     app = 'Payload/DEEMOII.app/'
     info = plistlib.loads(ipa.read(app+'Info.plist'))
     assert (info['CFBundleIdentifier'],info['CFBundleShortVersionString'],info['CFBundleVersion']) == (
@@ -125,3 +131,6 @@ for now in (5,60,30,60,30,90):
     expected=[i for i,t in enumerate(times) if now<=t<=now+2]
     assert visible==expected and expected,(now,visible,expected)
 print(f'PASS: {len(entries)} native entries, three music banks and six native Hard-chart previews in both directions')
+if args.adapter:
+    from result_ii import verify_practice_result
+    verify_practice_result(cpu, args.adapter.read_bytes())

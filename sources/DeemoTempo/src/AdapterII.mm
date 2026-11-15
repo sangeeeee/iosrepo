@@ -338,6 +338,9 @@ void settle(Method m) {
         setResultField("IsAllCharming",false);setResultField("IsFullCombo",false);setResultField("IsNewRecord",false);
         setResultField("IsClear",false);setResultField("_isSettlement",true);
         Object owner=practiceOwner?heldObject(practiceOwner):manager;
+        // _LeaveRhythmAsync waits for the UI to finish this animation even
+        // after _WaitForSettlementAsync has received SetRhythmResult.
+        fn<Static>(D::showResultAnimation)(nullptr);
         if(owner)fn<Action>(D::resultDone)(owner,nullptr);
         generatingResult=false;settled=true;
         // Keep the BGM handoff running through the outro after the final note.
